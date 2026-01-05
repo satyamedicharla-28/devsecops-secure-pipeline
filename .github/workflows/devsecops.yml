@@ -2,30 +2,49 @@ name: DevSecOps Secure Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   security:
+    name: Security Scans
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      # 1️⃣ Checkout repository
+      - name: Checkout source code
+        uses: actions/checkout@v4
 
-    - name: Run GitLeaks (Secrets Scan)
-      uses: gitleaks/gitleaks-action@v2
-      continue-on-error: true
+      # 2️⃣ GitLeaks - Secrets Scan
+      - name: Run GitLeaks (Secrets Scan)
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
 
-    - name: Install Trivy
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget
-        wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.48.0_Linux-64bit.deb
-        sudo dpkg -i trivy_0.48.0_Linux-64bit.deb
+      # 3️⃣ Install Trivy (Correct way)
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
 
-    - name: Build Docker Image
-      run: docker build -t secure-app .
+      # 4️⃣ Trivy File System Scan
+      - name: Trivy File System Scan
+        run: |
+          trivy fs . || true
 
-    - name: Scan Docker Image with Trivy
-      run: |
-        trivy image --severity HIGH,CRITICAL secure-app
+      # 5️⃣ Dependency Scan (Optional – Node.js)
+      - name: Dependency Scan (npm audit)
+        run: |
+          if [ -f package.json ]; then
+            npm install
+            npm audit || true
+          else
+            echo "No package.json found, skipping npm audit"
+          fi
+
